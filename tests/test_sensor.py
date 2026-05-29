@@ -3,6 +3,7 @@ import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dspico.const import CONF_NAME, CONF_WEBHOOK_ID, DOMAIN
@@ -53,6 +54,17 @@ async def test_sensor_values(hass, hass_client_no_auth, setup_entry):
     assert _state(hass, setup_entry, "nickname").state == "Hudson"
     assert _state(hass, setup_entry, "color").state == "4"
     assert _state(hass, setup_entry, "language").state == "pt"
+
+    # rtc is parsed to a timezone-aware timestamp.
+    rtc_state = _state(hass, setup_entry, "rtc").state
+    parsed = dt_util.parse_datetime(rtc_state)
+    assert parsed is not None
+    assert parsed.tzinfo is not None
+    # last_seen is set by the store on update.
+    assert _state(hass, setup_entry, "last_seen").state not in (
+        "unknown",
+        "unavailable",
+    )
 
 
 async def test_missing_field_is_unknown(hass, hass_client_no_auth, setup_entry):
