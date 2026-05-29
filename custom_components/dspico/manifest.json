@@ -1,0 +1,11 @@
+{
+  "domain": "dspico",
+  "name": "DSpico",
+  "codeowners": ["@hudsonbrendon"],
+  "config_flow": true,
+  "dependencies": ["webhook"],
+  "documentation": "https://github.com/hudsonbrendon/dspico-home-assistant",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/hudsonbrendon/dspico-home-assistant/issues",
+  "version": "0.1.0"
+}
