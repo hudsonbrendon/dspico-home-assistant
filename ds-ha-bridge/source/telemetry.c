@@ -34,6 +34,9 @@ void telemetry_collect(telemetry_t *t, const char *device_name,
     nickname_to_ascii(PersonalData->name, PersonalData->nameLen,
                       t->nickname, sizeof(t->nickname));
     t->color = PersonalData->theme;
+    if (t->color < 0 || t->color > 15) {
+        t->color = TLM_UNKNOWN_INT; /* drop an out-of-range colour, don't 400 */
+    }
     snprintf(t->language, sizeof(t->language), "%s",
              language_code(PersonalData->language));
 

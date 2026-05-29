@@ -47,16 +47,29 @@ int http_post(const char *host, int port, const char *path, const char *body) {
         sent += w;
     }
 
-    /* Read just enough to parse the status line: "HTTP/1.1 200 OK". */
+    /* Read the response status line. recv may return short reads, so keep
+     * reading until the first newline (end of status line), the buffer fills,
+     * or the peer closes. */
     char resp[64];
-    int got = recv(sock, resp, sizeof(resp) - 1, 0);
+    int total = 0;
+    while (total < (int)sizeof(resp) - 1) {
+        int got = recv(sock, resp + total, sizeof(resp) - 1 - total, 0);
+        if (got <= 0) {
+            break;
+        }
+        total += got;
+        resp[total] = '\0';
+        if (strchr(resp, '\n')) {
+            break;
+        }
+    }
     closesocket(sock);
-    if (got <= 0) {
+    if (total <= 0) {
         return -6;
     }
-    resp[got] = '\0';
+    resp[total] = '\0';
 
-    /* Parse the status code after the first space. */
+    /* Parse the status code after the first space ("HTTP/1.1 200 OK"). */
     char *space = strchr(resp, ' ');
     if (!space) {
         return -7;
