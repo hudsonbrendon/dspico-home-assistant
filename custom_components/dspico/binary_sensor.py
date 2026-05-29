@@ -41,7 +41,7 @@ class DspicoPresence(DspicoEntity, BinarySensorEntity):
         return True
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         return self.store.available
 
 

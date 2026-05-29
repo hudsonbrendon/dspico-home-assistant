@@ -52,3 +52,18 @@ async def test_presence_off_after_timeout(hass, hass_client_no_auth, setup_entry
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=91))
     await hass.async_block_till_done()
     assert hass.states.get("binary_sensor.dsi_quarto_presence").state == "off"
+
+
+async def test_presence_recovers_and_charging_off(hass, hass_client_no_auth, setup_entry):
+    client = await hass_client_no_auth()
+    await _post(client, {"device": "dsi"})
+    await hass.async_block_till_done()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=91))
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.dsi_quarto_presence").state == "off"
+
+    # A new POST brings presence back on; charging:false reads as "off".
+    await _post(client, {"device": "dsi", "battery": {"charging": False}})
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.dsi_quarto_presence").state == "on"
+    assert hass.states.get("binary_sensor.dsi_quarto_charging").state == "off"

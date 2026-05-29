@@ -15,9 +15,14 @@ from .const import TIMEOUT_FACTOR
 class DspicoData:
     """Holds the latest telemetry and tracks availability via heartbeat.
 
-    A single offline callback is supported (last registration wins).
-    ``entry_id`` is exposed for callers (e.g. dispatcher signals) and is not
-    used internally.
+    Availability has a single source of truth: the watchdog. ``update()`` marks
+    the device available and (re)arms an ``async_call_later`` timer; when that
+    timer fires (no POST within ``interval * TIMEOUT_FACTOR``) the device is
+    marked unavailable and the offline callback runs. The offline callback runs
+    on every offline transition (in practice it is ``async_dispatcher_send``,
+    which is idempotent). A single offline callback is supported (last
+    registration wins). ``entry_id`` is exposed for callers (e.g. dispatcher
+    signals) and is not used internally.
     """
 
     def __init__(self, hass: HomeAssistant, entry_id: str, interval: int) -> None:
@@ -32,11 +37,7 @@ class DspicoData:
 
     @property
     def available(self) -> bool:
-        if self._last_seen is None:
-            return False
-        if not self._available:
-            return False
-        return dt_util.utcnow() - self._last_seen < self._timeout
+        return self._available
 
     def set_offline_callback(self, cb: Callable[[], None]) -> None:
         self._offline_cb = cb
@@ -55,8 +56,8 @@ class DspicoData:
 
     @callback
     def _handle_timeout(self, _now: datetime) -> None:
-        # If the handle fired naturally, the cancellation function is a no-op;
-        # keep it so that a manual call in tests doesn't strand the live timer.
+        # Do not null _cancel_watchdog here: when a test calls this manually the
+        # real scheduled timer is still pending and shutdown() must cancel it.
         self._available = False
         if self._offline_cb is not None:
             self._offline_cb()

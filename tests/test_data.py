@@ -25,10 +25,13 @@ def test_update_marks_available(store):
     assert store.fields["battery_level"] == 50
 
 
-def test_goes_offline_after_timeout(store, freezer):
+async def test_goes_offline_after_timeout(hass, store):
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
     store.update({"device": "dsi"})
     assert store.available is True
-    freezer.tick(timedelta(seconds=91))  # 30 * 3 + 1
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=91))
+    await hass.async_block_till_done()
     assert store.available is False
 
 
