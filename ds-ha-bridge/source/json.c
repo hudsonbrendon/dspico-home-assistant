@@ -2,18 +2,32 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Append src to dst (offset *pos within cap), escaping JSON string chars.
+/* Append src to dst (offset *pos within cap), escaping JSON string chars
+ * (quote, backslash, and control characters U+0000..U+001F). Bytes >= 0x20
+ * (incl. UTF-8 continuation bytes) are passed through unchanged.
  * Returns 0 on success, -1 on overflow. */
 static int append_escaped(char *dst, size_t cap, size_t *pos, const char *src) {
-    for (const char *s = src; *s; s++) {
-        char esc[3];
+    for (const unsigned char *s = (const unsigned char *)src; *s; s++) {
+        char esc[8];
         int len;
         if (*s == '"' || *s == '\\') {
             esc[0] = '\\';
-            esc[1] = *s;
+            esc[1] = (char)*s;
             len = 2;
+        } else if (*s == '\n') {
+            esc[0] = '\\'; esc[1] = 'n'; len = 2;
+        } else if (*s == '\r') {
+            esc[0] = '\\'; esc[1] = 'r'; len = 2;
+        } else if (*s == '\t') {
+            esc[0] = '\\'; esc[1] = 't'; len = 2;
+        } else if (*s == '\b') {
+            esc[0] = '\\'; esc[1] = 'b'; len = 2;
+        } else if (*s == '\f') {
+            esc[0] = '\\'; esc[1] = 'f'; len = 2;
+        } else if (*s < 0x20) {
+            len = snprintf(esc, sizeof(esc), "\\u%04x", (unsigned)*s);
         } else {
-            esc[0] = *s;
+            esc[0] = (char)*s;
             len = 1;
         }
         if (*pos + (size_t)len >= cap) {
@@ -98,6 +112,8 @@ int json_build(char *buf, size_t bufsize, const telemetry_t *t) {
         RAW("}");
     }
 
+    /* TLM_UNKNOWN_RSSI is strictly positive (1); valid RSSI is <= 0 dBm, so the
+     * "<= 0" guard emits real readings (including 0) and omits the unknown. */
     if (t->rssi <= 0 || t->ssid[0]) {
         RAW(",\"wifi\":{");
         int first = 1;

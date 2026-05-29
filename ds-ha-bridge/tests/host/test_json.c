@@ -60,5 +60,39 @@ int main(void) {
     esc.uptime_s = TLM_UNKNOWN_INT;
     n = json_build(buf, sizeof(buf), &esc);
     CHECK(contains(buf, "\"device\":\"a\\\"b\\\\c\""));
+
+    /* partial battery: level known, charging unknown -> only level */
+    telemetry_t pb = {0};
+    strcpy(pb.device, "dsi");
+    pb.battery_level = 42;
+    pb.charging = TLM_UNKNOWN_INT;
+    pb.color = TLM_UNKNOWN_INT;
+    pb.rssi = TLM_UNKNOWN_RSSI;
+    pb.uptime_s = TLM_UNKNOWN_INT;
+    json_build(buf, sizeof(buf), &pb);
+    CHECK(contains(buf, "\"battery\":{\"level\":42}"));
+    CHECK(!contains(buf, "charging"));
+
+    /* rssi == 0 is a valid reading and must be emitted */
+    telemetry_t r0 = {0};
+    strcpy(r0.device, "dsi");
+    r0.battery_level = TLM_UNKNOWN_INT;
+    r0.charging = TLM_UNKNOWN_INT;
+    r0.color = TLM_UNKNOWN_INT;
+    r0.rssi = 0;
+    r0.uptime_s = TLM_UNKNOWN_INT;
+    json_build(buf, sizeof(buf), &r0);
+    CHECK(contains(buf, "\"wifi\":{\"rssi\":0}"));
+
+    /* control characters are escaped -> valid JSON */
+    telemetry_t ctl = {0};
+    strcpy(ctl.device, "a\nb");
+    ctl.battery_level = TLM_UNKNOWN_INT;
+    ctl.charging = TLM_UNKNOWN_INT;
+    ctl.color = TLM_UNKNOWN_INT;
+    ctl.rssi = TLM_UNKNOWN_RSSI;
+    ctl.uptime_s = TLM_UNKNOWN_INT;
+    json_build(buf, sizeof(buf), &ctl);
+    CHECK(contains(buf, "\"device\":\"a\\nb\""));
     DONE();
 }
