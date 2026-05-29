@@ -14,6 +14,12 @@ For the HACS validation action to pass, the GitHub repository must have
 `dspico`). Set them under the repo's "About" gear on GitHub — the HACS action
 fails without them.
 
+The CI's HACS check ignores the `brands` validation (`ignore: brands`) because
+the `dspico` domain is not yet registered in the
+[home-assistant/brands](https://github.com/home-assistant/brands) repository.
+Submit a brands PR there before publishing to the HACS default store, then
+remove the `ignore`.
+
 ## Install (manual)
 
 1. Copy `custom_components/dspico/` into your HA `config/custom_components/`.
