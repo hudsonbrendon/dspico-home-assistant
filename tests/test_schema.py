@@ -48,3 +48,34 @@ def test_missing_device_is_invalid():
 def test_out_of_range_battery_is_invalid():
     with pytest.raises(vol.Invalid):
         TELEMETRY_SCHEMA({"device": "dsi", "battery": {"level": 250}})
+
+
+def test_bool_rejected_for_int_fields():
+    with pytest.raises(vol.Invalid):
+        TELEMETRY_SCHEMA({"device": "dsi", "battery": {"level": True}})
+
+
+def test_empty_device_is_invalid():
+    with pytest.raises(vol.Invalid):
+        TELEMETRY_SCHEMA({"device": ""})
+
+
+def test_unknown_keys_are_stripped():
+    data = TELEMETRY_SCHEMA(
+        {"device": "dsi", "bogus": 1, "wifi": {"rssi": -50, "x": 9}}
+    )
+    assert "bogus" not in data
+    assert "x" not in data["wifi"]
+
+
+def test_range_boundaries_valid():
+    parsed = parse_payload(
+        {"device": "dsi", "battery": {"level": 0}, "wifi": {"rssi": -120}}
+    )
+    assert parsed["battery_level"] == 0
+    assert parsed["rssi"] == -120
+    parsed = parse_payload(
+        {"device": "dsi", "battery": {"level": 100}, "wifi": {"rssi": 0}}
+    )
+    assert parsed["battery_level"] == 100
+    assert parsed["rssi"] == 0
