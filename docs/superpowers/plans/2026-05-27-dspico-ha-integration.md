@@ -1655,3 +1655,53 @@ git commit -m "ci: add hassfest, HACS and pytest workflow plus HACS metadata"
 **Placeholder scan:** none — every code step contains full code; placeholder platform modules in Task 6 are explicitly replaced in Tasks 8–9.
 
 **Type consistency:** `DspicoData(hass, entry_id, interval)`, `.update(fields)`, `.fields`, `.available`, `.last_seen`, `.set_offline_callback`, `.shutdown` used identically across Tasks 4/6/7/8/9. `DspicoEntity(store, entry_id, device_name, key)` signature consistent in Tasks 7/8/9. Flat field keys (`battery_level`, `charging`, `rtc`, `nickname`, `color`, `language`, `rssi`, `ssid`, `uptime_s`) match `parse_payload` output from Task 3. `SIGNAL_UPDATE.format(entry_id)` consistent in Tasks 4/6/7. Entity ids (`binary_sensor.dsi_quarto_presence`, etc.) follow `has_entity_name` + device name "DSi Quarto" used in tests.
+
+---
+
+## Build Log — deviations from the original plan
+
+Captured during subagent-driven execution. Code is the source of truth; the
+task bodies above were synced inline where marked, others are recorded here.
+
+1. **const.py** — `PLATFORMS` uses the `Platform` enum; `CONF_NAME`/`CONF_WEBHOOK_ID`
+   are re-exported from `homeassistant.const`; `Final` annotations added. *(synced inline)*
+2. **schema.py** — hardened beyond the plan: a `_strict_int` validator rejects
+   `bool` (an `int` subclass), string length caps on device/fw/rtc/nickname/
+   language/ssid, and `extra=vol.REMOVE_EXTRA` (forward-compatible: unknown keys
+   are dropped, not rejected). `fw`/`ssid`/`uptime_s` are parsed but not yet
+   surfaced as entities (noted in code). *(synced inline)*
+3. **config_flow.py** — two-step flow: `user` collects the name, `confirm` shows
+   the generated webhook URL via `description_placeholders` (falls back to a
+   relative path when no HA base URL is configured) so the user can copy it into
+   `dspico_ha.cfg`. *(synced inline; `strings.json` gained a `confirm` step)*
+4. **__init__.py** — the HA webhook module is imported as `ha_webhook`, because the
+   local `webhook.py` submodule shadows the bare name `webhook` in the package
+   namespace. Unload order corrected (unload platforms first, then unregister +
+   `shutdown()` only if successful). *(synced inline)*
+5. **webhook.py** — the store update + dispatch is wrapped in a guard returning
+   HTTP 500 (with `_LOGGER.exception`) on unexpected errors. *(synced inline)*
+6. **data.py — availability is watchdog-driven (NOT synced inline above).** The
+   `available` property is `return self._available`, a flag set `True` in
+   `update()` and `False` in `_handle_timeout()`. The original time-delta check
+   was removed: the `async_call_later` watchdog is the single source of truth.
+   (`_handle_timeout` intentionally does not null `_cancel_watchdog`, so a manual
+   call in tests still lets `shutdown()` cancel the real pending timer.)
+7. **sensor.py — value_fn pattern (NOT synced inline above).** `DspicoSensorDescription`
+   carries a `value_fn: Callable[[DspicoData], ...]`; `native_value` is a single
+   delegation. `_field(key)` closures cover the plain fields; `_rtc` parses the
+   naive ISO string and stamps the HA default tz (fold=0 assumed during DST
+   overlap, documented in code). `color` got `icon="mdi:palette"`.
+8. **Test infrastructure (NOT synced inline above):**
+   - `setup.cfg` added with `asyncio_mode = auto` and `testpaths = tests`.
+   - `tests/conftest.py` makes `enable_custom_integrations` autouse only for tests
+     that use `hass` (so pure-sync tests don't pull in the async fixture), plus a
+     session-scoped `_prewarm_pycares_shutdown_thread` fixture that avoids a
+     `verify_cleanup` false positive from pycares' lazily-started daemon thread.
+   - Test fixtures that arm the watchdog unload the entry / call `shutdown()` on
+     teardown to avoid lingering-timer failures.
+   - **Translations (Task 10) were implemented before sensors (Task 9)** because
+     entity_ids slug from the translated name; the sensor tests resolve entity_ids
+     via the entity registry by `unique_id` (`{entry_id}_{key}`) rather than
+     hardcoding slugified ids.
+
+**Result:** 11 tasks, 29 tests passing; final holistic review concluded "ready to merge".
