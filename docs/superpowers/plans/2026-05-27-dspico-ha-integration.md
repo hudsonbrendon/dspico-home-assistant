@@ -94,7 +94,10 @@ Create `custom_components/dspico/__init__.py`:
 
 Create `tests/__init__.py` (empty file).
 
-Create `tests/conftest.py`:
+Create `tests/conftest.py` (autouse but conditional: the plugin's
+`enable_custom_integrations` transitively pulls in the async `hass` fixture, so
+forcing it onto pure-sync tests fails — only activate it when the test uses
+`hass`):
 
 ```python
 """Fixtures for DSpico tests."""
@@ -102,9 +105,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations):
-    """Enable loading custom integrations in all tests."""
+def auto_enable_custom_integrations(request):
+    """Enable custom integrations only for tests that use Home Assistant."""
+    if "hass" in request.fixturenames:
+        request.getfixturevalue("enable_custom_integrations")
     yield
+```
+
+Also create `setup.cfg` so async tests run without per-function markers:
+
+```ini
+[tool:pytest]
+asyncio_mode = auto
+testpaths = tests
 ```
 
 - [ ] **Step 6: Write a smoke test that the manifest loads**
