@@ -24,13 +24,18 @@ int config_parse(const char *text, config_t *out) {
         const char *eol = strchr(p, '\n');
         size_t linelen = eol ? (size_t)(eol - p) : strlen(p);
         const char *line = p;
+        size_t llen = linelen;
+        while (llen > 0 && (*line == ' ' || *line == '\t')) {
+            line++;
+            llen--;
+        }
 
-        if (linelen > 0 && line[0] != '#') {
-            const char *eq = memchr(line, '=', linelen);
+        if (llen > 0 && line[0] != '#') {
+            const char *eq = memchr(line, '=', llen);
             if (eq) {
                 size_t keylen = (size_t)(eq - line);
                 const char *val = eq + 1;
-                size_t vallen = linelen - keylen - 1;
+                size_t vallen = llen - keylen - 1;
 
                 char key[32];
                 copy_trimmed(key, sizeof(key), line, keylen);
