@@ -619,6 +619,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import CONF_NAME, CONF_WEBHOOK_ID, DOMAIN
 
@@ -630,24 +631,51 @@ class DspicoConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        self._name: str | None = None
+        self._webhook_id: str | None = None
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is None:
             return self.async_show_form(step_id="user", data_schema=_USER_SCHEMA)
 
-        webhook_id = webhook.async_generate_id()
-        await self.async_set_unique_id(webhook_id)
+        self._name = user_input[CONF_NAME]
+        self._webhook_id = webhook.async_generate_id()
+        await self.async_set_unique_id(self._webhook_id)
         self._abort_if_unique_id_configured()
+        return await self.async_step_confirm()
 
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        assert self._name is not None
+        assert self._webhook_id is not None
+        if user_input is None:
+            try:
+                webhook_url = webhook.async_generate_url(self.hass, self._webhook_id)
+            except NoURLAvailableError:
+                webhook_url = f"/api/webhook/{self._webhook_id}"
+            return self.async_show_form(
+                step_id="confirm",
+                data_schema=vol.Schema({}),
+                description_placeholders={"webhook_url": webhook_url},
+            )
         return self.async_create_entry(
-            title=user_input[CONF_NAME],
+            title=self._name,
             data={
-                CONF_NAME: user_input[CONF_NAME],
-                CONF_WEBHOOK_ID: webhook_id,
+                CONF_NAME: self._name,
+                CONF_WEBHOOK_ID: self._webhook_id,
             },
         )
 ```
+
+The config flow has two steps: `user` collects the name and generates the
+webhook id; `confirm` shows the generated webhook URL (via
+`description_placeholders`) so the user can copy it into `dspico_ha.cfg`, then
+creates the entry. `strings.json` (Task 10) must therefore include a `confirm`
+step with a `{webhook_url}` placeholder.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1408,6 +1436,7 @@ def test_strings_and_translations_match():
         assert set(data["entity"]["sensor"]) == EXPECTED_SENSORS, fname
         assert set(data["entity"]["binary_sensor"]) == EXPECTED_BINARY, fname
         assert "user" in data["config"]["step"], fname
+        assert "confirm" in data["config"]["step"], fname
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1425,8 +1454,12 @@ Create `custom_components/dspico/strings.json`:
     "step": {
       "user": {
         "title": "DSpico",
-        "description": "Add a Nintendo DSi running the ds-ha-bridge app. A webhook will be created; put its URL in dspico_ha.cfg on the SD card.",
+        "description": "Add a Nintendo DSi running the ds-ha-bridge app. A webhook will be created next.",
         "data": { "name": "Name" }
+      },
+      "confirm": {
+        "title": "Webhook created",
+        "description": "Put this webhook URL in dspico_ha.cfg on the DSpico SD card:\n\n{webhook_url}"
       }
     }
   },
@@ -1462,8 +1495,12 @@ Create `custom_components/dspico/translations/pt-BR.json`:
     "step": {
       "user": {
         "title": "DSpico",
-        "description": "Adicione um Nintendo DSi rodando o app ds-ha-bridge. Um webhook será criado; coloque a URL dele no dspico_ha.cfg do cartão SD.",
+        "description": "Adicione um Nintendo DSi rodando o app ds-ha-bridge. Um webhook será criado em seguida.",
         "data": { "name": "Nome" }
+      },
+      "confirm": {
+        "title": "Webhook criado",
+        "description": "Coloque esta URL de webhook no dspico_ha.cfg do cartão SD do DSpico:\n\n{webhook_url}"
       }
     }
   },
