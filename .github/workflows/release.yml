@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  rom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the .nds ROM with the BlocksDS toolchain
+        run: >-
+          docker run --rm -v "$PWD/ds-ha-bridge":/project -w /project
+          skylyrac/blocksds:dev-latest make
+      - name: Publish GitHub release with the ROM attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          ds-ha-bridge/ds-ha-bridge.nds
+          --title "${{ github.ref_name }}"
+          --notes "ds-ha-bridge ROM for ${{ github.ref_name }}. Flash
+          ds-ha-bridge.nds to the DSpico SD card and add a /dspico_ha.cfg
+          (see ds-ha-bridge/README.md)."

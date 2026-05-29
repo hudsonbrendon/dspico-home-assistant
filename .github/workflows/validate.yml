@@ -44,3 +44,9 @@ jobs:
         run: >-
           docker run --rm -v "$PWD/ds-ha-bridge":/project -w /project
           skylyrac/blocksds:dev-latest make
+      - name: Upload the ROM as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ds-ha-bridge-nds
+          path: ds-ha-bridge/ds-ha-bridge.nds
+          if-no-files-found: error

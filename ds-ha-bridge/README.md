@@ -29,7 +29,9 @@ Either way produces `ds-ha-bridge.nds` (~224 KB). The ROM build also runs in CI
 
 ## Install
 
-1. Copy `ds-ha-bridge.nds` to the DSpico SD card.
+1. Get `ds-ha-bridge.nds`: download it from the repo's **Releases** (attached to
+   each `v*` tag), or grab the `ds-ha-bridge-nds` artifact from a CI run, or
+   build it (see Build above). Copy it to the DSpico SD card.
 2. Copy `dspico_ha.cfg.example` to the SD root as `dspico_ha.cfg` and edit
    `host`, `path` (the webhook path from HA), and `device_name`.
 3. Launch `ds-ha-bridge` from Pico Launcher.
