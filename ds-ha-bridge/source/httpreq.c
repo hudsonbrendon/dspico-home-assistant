@@ -4,6 +4,9 @@
 
 int http_build_request(char *buf, size_t bufsize, const char *host, int port,
                        const char *path, const char *body) {
+    if (body == NULL) {
+        body = "";
+    }
     int n = snprintf(
         buf, bufsize,
         "POST %s HTTP/1.1\r\n"

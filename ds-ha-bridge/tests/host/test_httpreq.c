@@ -21,5 +21,12 @@ int main(void) {
     /* overflow guard */
     char tiny[10];
     CHECK(http_build_request(tiny, sizeof(tiny), "h", 80, "/p", body) == -1);
+
+    /* empty body -> Content-Length: 0, still well-formed */
+    char eb[256];
+    int m = http_build_request(eb, sizeof(eb), "h", 80, "/p", "");
+    CHECK(m > 0);
+    CHECK(contains(eb, "Content-Length: 0\r\n"));
+    CHECK(contains(eb, "\r\n\r\n"));
     DONE();
 }
