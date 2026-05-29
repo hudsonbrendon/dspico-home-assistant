@@ -196,18 +196,32 @@ Create `custom_components/dspico/const.py`:
 """Constants for the DSpico integration."""
 from __future__ import annotations
 
-DOMAIN = "dspico"
+from typing import Final
 
-CONF_WEBHOOK_ID = "webhook_id"
-CONF_NAME = "name"
+from homeassistant.const import CONF_NAME, CONF_WEBHOOK_ID, Platform
 
-DEFAULT_INTERVAL = 30  # seconds between expected POSTs
-TIMEOUT_FACTOR = 3  # device considered offline after INTERVAL * FACTOR
+DOMAIN: Final = "dspico"
 
-# Dispatcher signal, formatted with the config entry_id.
-SIGNAL_UPDATE = "dspico_update_{}"
+# CONF_NAME / CONF_WEBHOOK_ID are re-exported from homeassistant.const so call
+# sites can keep doing `from .const import CONF_NAME, CONF_WEBHOOK_ID`.
+__all__ = [
+    "DOMAIN",
+    "CONF_NAME",
+    "CONF_WEBHOOK_ID",
+    "DEFAULT_INTERVAL",
+    "TIMEOUT_FACTOR",
+    "SIGNAL_UPDATE",
+    "PLATFORMS",
+]
 
-PLATFORMS = ["binary_sensor", "sensor"]
+DEFAULT_INTERVAL: Final = 30  # seconds between expected webhook POSTs
+TIMEOUT_FACTOR: Final = 3  # offline threshold = DEFAULT_INTERVAL * TIMEOUT_FACTOR (90 s)
+
+# Dispatcher signal, formatted positionally with the entry_id:
+# SIGNAL_UPDATE.format(entry_id)
+SIGNAL_UPDATE: Final = "dspico_update_{}"
+
+PLATFORMS: Final[list[Platform]] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
