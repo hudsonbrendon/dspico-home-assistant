@@ -28,3 +28,10 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-test.txt
       - run: pytest -v
+
+  ds-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test
+        working-directory: ds-ha-bridge/tests/host
