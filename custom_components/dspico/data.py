@@ -13,7 +13,12 @@ from .const import TIMEOUT_FACTOR
 
 
 class DspicoData:
-    """Holds the latest telemetry and tracks availability via heartbeat."""
+    """Holds the latest telemetry and tracks availability via heartbeat.
+
+    A single offline callback is supported (last registration wins).
+    ``entry_id`` is exposed for callers (e.g. dispatcher signals) and is not
+    used internally.
+    """
 
     def __init__(self, hass: HomeAssistant, entry_id: str, interval: int) -> None:
         self._hass = hass

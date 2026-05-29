@@ -39,3 +39,17 @@ def test_offline_callback_fires(hass, store):
     # Simulate the watchdog firing.
     store._handle_timeout(dt_util.utcnow())
     assert fired == [True]
+
+
+async def test_watchdog_fires_callback_after_timeout(hass, store):
+    """The real async_call_later timer must invoke the offline callback."""
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    fired = []
+    store.set_offline_callback(lambda: fired.append(True))
+    store.update({"device": "dsi"})
+    async_fire_time_changed(
+        hass, dt_util.utcnow() + store._timeout + timedelta(seconds=1)
+    )
+    await hass.async_block_till_done()
+    assert fired == [True]
