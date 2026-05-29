@@ -711,6 +711,7 @@ Create `tests/test_webhook.py`:
 from http import HTTPStatus
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -734,7 +735,11 @@ async def setup_entry(hass: HomeAssistant):
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    return entry
+    yield entry
+    # Unload on teardown so the watchdog timer doesn't linger (verify_cleanup).
+    if entry.state is ConfigEntryState.LOADED:
+        await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
 
 
 async def test_valid_post_updates_store(hass, hass_client_no_auth, setup_entry):
@@ -816,8 +821,14 @@ def make_handler(store: DspicoData):
             _LOGGER.debug("DSpico webhook %s: invalid payload: %s", webhook_id, err)
             return Response(status=400)
 
-        store.update(fields)
-        async_dispatcher_send(hass, SIGNAL_UPDATE.format(store.entry_id))
+        try:
+            store.update(fields)
+            async_dispatcher_send(hass, SIGNAL_UPDATE.format(store.entry_id))
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception(
+                "DSpico webhook %s: unexpected error updating store", webhook_id
+            )
+            return Response(status=500)
         return Response(status=200)
 
     return handler
@@ -831,7 +842,7 @@ Replace the contents of `custom_components/dspico/__init__.py`:
 """The DSpico integration."""
 from __future__ import annotations
 
-from homeassistant.components import webhook
+import homeassistant.components.webhook as ha_webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -859,7 +870,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bo
     entry.runtime_data = store
 
     webhook_id = entry.data[CONF_WEBHOOK_ID]
-    webhook.async_register(
+    ha_webhook.async_register(
         hass,
         DOMAIN,
         entry.data[CONF_NAME],
@@ -873,10 +884,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bo
 
 async def async_unload_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bool:
     """Unload a config entry."""
-    webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
-    entry.runtime_data.shutdown()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        ha_webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
+        entry.runtime_data.shutdown()
+    return unload_ok
 ```
+
+> **Import note:** the HA webhook module is imported as `ha_webhook`, NOT
+> `from homeassistant.components import webhook`. Because this package also has a
+> local `webhook.py` submodule (`from .webhook import make_handler`), importing
+> that submodule binds the name `webhook` as a package attribute and would
+> shadow the HA module — so a distinct alias is required.
+> **Unload order:** unload platforms first; only unregister the webhook and
+> `shutdown()` the store if the platform unload succeeded.
 
 - [ ] **Step 5: Create placeholder platform modules so forwarding succeeds**
 
