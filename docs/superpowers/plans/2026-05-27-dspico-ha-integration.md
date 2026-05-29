@@ -94,7 +94,10 @@ Create `custom_components/dspico/__init__.py`:
 
 Create `tests/__init__.py` (empty file).
 
-Create `tests/conftest.py`:
+Create `tests/conftest.py` (autouse but conditional: the plugin's
+`enable_custom_integrations` transitively pulls in the async `hass` fixture, so
+forcing it onto pure-sync tests fails — only activate it when the test uses
+`hass`):
 
 ```python
 """Fixtures for DSpico tests."""
@@ -102,9 +105,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations):
-    """Enable loading custom integrations in all tests."""
+def auto_enable_custom_integrations(request):
+    """Enable custom integrations only for tests that use Home Assistant."""
+    if "hass" in request.fixturenames:
+        request.getfixturevalue("enable_custom_integrations")
     yield
+```
+
+Also create `setup.cfg` so async tests run without per-function markers:
+
+```ini
+[tool:pytest]
+asyncio_mode = auto
+testpaths = tests
 ```
 
 - [ ] **Step 6: Write a smoke test that the manifest loads**
@@ -183,18 +196,32 @@ Create `custom_components/dspico/const.py`:
 """Constants for the DSpico integration."""
 from __future__ import annotations
 
-DOMAIN = "dspico"
+from typing import Final
 
-CONF_WEBHOOK_ID = "webhook_id"
-CONF_NAME = "name"
+from homeassistant.const import CONF_NAME, CONF_WEBHOOK_ID, Platform
 
-DEFAULT_INTERVAL = 30  # seconds between expected POSTs
-TIMEOUT_FACTOR = 3  # device considered offline after INTERVAL * FACTOR
+DOMAIN: Final = "dspico"
 
-# Dispatcher signal, formatted with the config entry_id.
-SIGNAL_UPDATE = "dspico_update_{}"
+# CONF_NAME / CONF_WEBHOOK_ID are re-exported from homeassistant.const so call
+# sites can keep doing `from .const import CONF_NAME, CONF_WEBHOOK_ID`.
+__all__ = [
+    "DOMAIN",
+    "CONF_NAME",
+    "CONF_WEBHOOK_ID",
+    "DEFAULT_INTERVAL",
+    "TIMEOUT_FACTOR",
+    "SIGNAL_UPDATE",
+    "PLATFORMS",
+]
 
-PLATFORMS = ["binary_sensor", "sensor"]
+DEFAULT_INTERVAL: Final = 30  # seconds between expected webhook POSTs
+TIMEOUT_FACTOR: Final = 3  # offline threshold = DEFAULT_INTERVAL * TIMEOUT_FACTOR (90 s)
+
+# Dispatcher signal, formatted positionally with the entry_id:
+# SIGNAL_UPDATE.format(entry_id)
+SIGNAL_UPDATE: Final = "dspico_update_{}"
+
+PLATFORMS: Final[list[Platform]] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -294,38 +321,50 @@ from typing import Any
 
 import voluptuous as vol
 
+
+def _strict_int(value: Any) -> int:
+    """Accept real integers only — reject bool (a subclass of int)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise vol.Invalid("expected an integer")
+    return value
+
+
 _BATTERY = vol.Schema(
     {
-        vol.Optional("level"): vol.All(int, vol.Range(min=0, max=100)),
+        vol.Optional("level"): vol.All(_strict_int, vol.Range(min=0, max=100)),
         vol.Optional("charging"): bool,
-    }
+    },
+    extra=vol.REMOVE_EXTRA,
 )
 
 _IDENTITY = vol.Schema(
     {
-        vol.Optional("nickname"): str,
-        vol.Optional("color"): vol.All(int, vol.Range(min=0, max=15)),
-        vol.Optional("language"): str,
-    }
+        vol.Optional("nickname"): vol.All(str, vol.Length(max=32)),
+        vol.Optional("color"): vol.All(_strict_int, vol.Range(min=0, max=15)),
+        vol.Optional("language"): vol.All(str, vol.Length(max=8)),
+    },
+    extra=vol.REMOVE_EXTRA,
 )
 
 _WIFI = vol.Schema(
     {
-        vol.Optional("rssi"): vol.All(int, vol.Range(min=-120, max=0)),
-        vol.Optional("ssid"): str,
-    }
+        vol.Optional("rssi"): vol.All(_strict_int, vol.Range(min=-120, max=0)),
+        vol.Optional("ssid"): vol.All(str, vol.Length(max=64)),
+    },
+    extra=vol.REMOVE_EXTRA,
 )
 
 TELEMETRY_SCHEMA = vol.Schema(
     {
-        vol.Required("device"): str,
-        vol.Optional("fw"): str,
+        vol.Required("device"): vol.All(str, vol.Length(min=1, max=64)),
+        vol.Optional("fw"): vol.All(str, vol.Length(max=64)),
         vol.Optional("battery"): _BATTERY,
-        vol.Optional("rtc"): str,
+        vol.Optional("rtc"): vol.All(str, vol.Length(max=32)),
         vol.Optional("identity"): _IDENTITY,
         vol.Optional("wifi"): _WIFI,
-        vol.Optional("uptime_s"): vol.All(int, vol.Range(min=0)),
-    }
+        vol.Optional("uptime_s"): vol.All(_strict_int, vol.Range(min=0)),
+    },
+    extra=vol.REMOVE_EXTRA,
 )
 
 
@@ -580,6 +619,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.helpers.network import NoURLAvailableError
 
 from .const import CONF_NAME, CONF_WEBHOOK_ID, DOMAIN
 
@@ -591,24 +631,51 @@ class DspicoConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        self._name: str | None = None
+        self._webhook_id: str | None = None
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is None:
             return self.async_show_form(step_id="user", data_schema=_USER_SCHEMA)
 
-        webhook_id = webhook.async_generate_id()
-        await self.async_set_unique_id(webhook_id)
+        self._name = user_input[CONF_NAME]
+        self._webhook_id = webhook.async_generate_id()
+        await self.async_set_unique_id(self._webhook_id)
         self._abort_if_unique_id_configured()
+        return await self.async_step_confirm()
 
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        assert self._name is not None
+        assert self._webhook_id is not None
+        if user_input is None:
+            try:
+                webhook_url = webhook.async_generate_url(self.hass, self._webhook_id)
+            except NoURLAvailableError:
+                webhook_url = f"/api/webhook/{self._webhook_id}"
+            return self.async_show_form(
+                step_id="confirm",
+                data_schema=vol.Schema({}),
+                description_placeholders={"webhook_url": webhook_url},
+            )
         return self.async_create_entry(
-            title=user_input[CONF_NAME],
+            title=self._name,
             data={
-                CONF_NAME: user_input[CONF_NAME],
-                CONF_WEBHOOK_ID: webhook_id,
+                CONF_NAME: self._name,
+                CONF_WEBHOOK_ID: self._webhook_id,
             },
         )
 ```
+
+The config flow has two steps: `user` collects the name and generates the
+webhook id; `confirm` shows the generated webhook URL (via
+`description_placeholders`) so the user can copy it into `dspico_ha.cfg`, then
+creates the entry. `strings.json` (Task 10) must therefore include a `confirm`
+step with a `{webhook_url}` placeholder.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -644,6 +711,7 @@ Create `tests/test_webhook.py`:
 from http import HTTPStatus
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -667,7 +735,11 @@ async def setup_entry(hass: HomeAssistant):
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    return entry
+    yield entry
+    # Unload on teardown so the watchdog timer doesn't linger (verify_cleanup).
+    if entry.state is ConfigEntryState.LOADED:
+        await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()
 
 
 async def test_valid_post_updates_store(hass, hass_client_no_auth, setup_entry):
@@ -749,8 +821,14 @@ def make_handler(store: DspicoData):
             _LOGGER.debug("DSpico webhook %s: invalid payload: %s", webhook_id, err)
             return Response(status=400)
 
-        store.update(fields)
-        async_dispatcher_send(hass, SIGNAL_UPDATE.format(store.entry_id))
+        try:
+            store.update(fields)
+            async_dispatcher_send(hass, SIGNAL_UPDATE.format(store.entry_id))
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception(
+                "DSpico webhook %s: unexpected error updating store", webhook_id
+            )
+            return Response(status=500)
         return Response(status=200)
 
     return handler
@@ -764,7 +842,7 @@ Replace the contents of `custom_components/dspico/__init__.py`:
 """The DSpico integration."""
 from __future__ import annotations
 
-from homeassistant.components import webhook
+import homeassistant.components.webhook as ha_webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -792,7 +870,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bo
     entry.runtime_data = store
 
     webhook_id = entry.data[CONF_WEBHOOK_ID]
-    webhook.async_register(
+    ha_webhook.async_register(
         hass,
         DOMAIN,
         entry.data[CONF_NAME],
@@ -806,10 +884,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bo
 
 async def async_unload_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bool:
     """Unload a config entry."""
-    webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
-    entry.runtime_data.shutdown()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        ha_webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
+        entry.runtime_data.shutdown()
+    return unload_ok
 ```
+
+> **Import note:** the HA webhook module is imported as `ha_webhook`, NOT
+> `from homeassistant.components import webhook`. Because this package also has a
+> local `webhook.py` submodule (`from .webhook import make_handler`), importing
+> that submodule binds the name `webhook` as a package attribute and would
+> shadow the HA module — so a distinct alias is required.
+> **Unload order:** unload platforms first; only unregister the webhook and
+> `shutdown()` the store if the platform unload succeeded.
 
 - [ ] **Step 5: Create placeholder platform modules so forwarding succeeds**
 
@@ -1369,6 +1457,7 @@ def test_strings_and_translations_match():
         assert set(data["entity"]["sensor"]) == EXPECTED_SENSORS, fname
         assert set(data["entity"]["binary_sensor"]) == EXPECTED_BINARY, fname
         assert "user" in data["config"]["step"], fname
+        assert "confirm" in data["config"]["step"], fname
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1386,8 +1475,12 @@ Create `custom_components/dspico/strings.json`:
     "step": {
       "user": {
         "title": "DSpico",
-        "description": "Add a Nintendo DSi running the ds-ha-bridge app. A webhook will be created; put its URL in dspico_ha.cfg on the SD card.",
+        "description": "Add a Nintendo DSi running the ds-ha-bridge app. A webhook will be created next.",
         "data": { "name": "Name" }
+      },
+      "confirm": {
+        "title": "Webhook created",
+        "description": "Put this webhook URL in dspico_ha.cfg on the DSpico SD card:\n\n{webhook_url}"
       }
     }
   },
@@ -1423,8 +1516,12 @@ Create `custom_components/dspico/translations/pt-BR.json`:
     "step": {
       "user": {
         "title": "DSpico",
-        "description": "Adicione um Nintendo DSi rodando o app ds-ha-bridge. Um webhook será criado; coloque a URL dele no dspico_ha.cfg do cartão SD.",
+        "description": "Adicione um Nintendo DSi rodando o app ds-ha-bridge. Um webhook será criado em seguida.",
         "data": { "name": "Nome" }
+      },
+      "confirm": {
+        "title": "Webhook criado",
+        "description": "Coloque esta URL de webhook no dspico_ha.cfg do cartão SD do DSpico:\n\n{webhook_url}"
       }
     }
   },
@@ -1558,3 +1655,53 @@ git commit -m "ci: add hassfest, HACS and pytest workflow plus HACS metadata"
 **Placeholder scan:** none — every code step contains full code; placeholder platform modules in Task 6 are explicitly replaced in Tasks 8–9.
 
 **Type consistency:** `DspicoData(hass, entry_id, interval)`, `.update(fields)`, `.fields`, `.available`, `.last_seen`, `.set_offline_callback`, `.shutdown` used identically across Tasks 4/6/7/8/9. `DspicoEntity(store, entry_id, device_name, key)` signature consistent in Tasks 7/8/9. Flat field keys (`battery_level`, `charging`, `rtc`, `nickname`, `color`, `language`, `rssi`, `ssid`, `uptime_s`) match `parse_payload` output from Task 3. `SIGNAL_UPDATE.format(entry_id)` consistent in Tasks 4/6/7. Entity ids (`binary_sensor.dsi_quarto_presence`, etc.) follow `has_entity_name` + device name "DSi Quarto" used in tests.
+
+---
+
+## Build Log — deviations from the original plan
+
+Captured during subagent-driven execution. Code is the source of truth; the
+task bodies above were synced inline where marked, others are recorded here.
+
+1. **const.py** — `PLATFORMS` uses the `Platform` enum; `CONF_NAME`/`CONF_WEBHOOK_ID`
+   are re-exported from `homeassistant.const`; `Final` annotations added. *(synced inline)*
+2. **schema.py** — hardened beyond the plan: a `_strict_int` validator rejects
+   `bool` (an `int` subclass), string length caps on device/fw/rtc/nickname/
+   language/ssid, and `extra=vol.REMOVE_EXTRA` (forward-compatible: unknown keys
+   are dropped, not rejected). `fw`/`ssid`/`uptime_s` are parsed but not yet
+   surfaced as entities (noted in code). *(synced inline)*
+3. **config_flow.py** — two-step flow: `user` collects the name, `confirm` shows
+   the generated webhook URL via `description_placeholders` (falls back to a
+   relative path when no HA base URL is configured) so the user can copy it into
+   `dspico_ha.cfg`. *(synced inline; `strings.json` gained a `confirm` step)*
+4. **__init__.py** — the HA webhook module is imported as `ha_webhook`, because the
+   local `webhook.py` submodule shadows the bare name `webhook` in the package
+   namespace. Unload order corrected (unload platforms first, then unregister +
+   `shutdown()` only if successful). *(synced inline)*
+5. **webhook.py** — the store update + dispatch is wrapped in a guard returning
+   HTTP 500 (with `_LOGGER.exception`) on unexpected errors. *(synced inline)*
+6. **data.py — availability is watchdog-driven (NOT synced inline above).** The
+   `available` property is `return self._available`, a flag set `True` in
+   `update()` and `False` in `_handle_timeout()`. The original time-delta check
+   was removed: the `async_call_later` watchdog is the single source of truth.
+   (`_handle_timeout` intentionally does not null `_cancel_watchdog`, so a manual
+   call in tests still lets `shutdown()` cancel the real pending timer.)
+7. **sensor.py — value_fn pattern (NOT synced inline above).** `DspicoSensorDescription`
+   carries a `value_fn: Callable[[DspicoData], ...]`; `native_value` is a single
+   delegation. `_field(key)` closures cover the plain fields; `_rtc` parses the
+   naive ISO string and stamps the HA default tz (fold=0 assumed during DST
+   overlap, documented in code). `color` got `icon="mdi:palette"`.
+8. **Test infrastructure (NOT synced inline above):**
+   - `setup.cfg` added with `asyncio_mode = auto` and `testpaths = tests`.
+   - `tests/conftest.py` makes `enable_custom_integrations` autouse only for tests
+     that use `hass` (so pure-sync tests don't pull in the async fixture), plus a
+     session-scoped `_prewarm_pycares_shutdown_thread` fixture that avoids a
+     `verify_cleanup` false positive from pycares' lazily-started daemon thread.
+   - Test fixtures that arm the watchdog unload the entry / call `shutdown()` on
+     teardown to avoid lingering-timer failures.
+   - **Translations (Task 10) were implemented before sensors (Task 9)** because
+     entity_ids slug from the translated name; the sensor tests resolve entity_ids
+     via the entity registry by `unique_id` (`{entry_id}_{key}`) rather than
+     hardcoding slugified ids.
+
+**Result:** 11 tasks, 29 tests passing; final holistic review concluded "ready to merge".

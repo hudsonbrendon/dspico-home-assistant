@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DSpico",
+        "description": "Adicione um Nintendo DSi rodando o app ds-ha-bridge. Um webhook será criado em seguida.",
+        "data": { "name": "Nome" }
+      },
+      "confirm": {
+        "title": "Webhook criado",
+        "description": "Coloque esta URL de webhook no dspico_ha.cfg do cartão SD do DSpico:\n\n{webhook_url}"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "presence": { "name": "Presença" },
+      "charging": { "name": "Carregando" }
+    },
+    "sensor": {
+      "battery": { "name": "Bateria" },
+      "wifi_signal": { "name": "Sinal Wi-Fi" },
+      "rtc": { "name": "Relógio do console" },
+      "nickname": { "name": "Apelido" },
+      "color": { "name": "Cor favorita" },
+      "language": { "name": "Idioma" },
+      "last_seen": { "name": "Visto por último" }
+    }
+  }
+}
