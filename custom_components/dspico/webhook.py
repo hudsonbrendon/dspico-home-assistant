@@ -33,8 +33,14 @@ def make_handler(store: DspicoData):
             _LOGGER.debug("DSpico webhook %s: invalid payload: %s", webhook_id, err)
             return Response(status=400)
 
-        store.update(fields)
-        async_dispatcher_send(hass, SIGNAL_UPDATE.format(store.entry_id))
+        try:
+            store.update(fields)
+            async_dispatcher_send(hass, SIGNAL_UPDATE.format(store.entry_id))
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception(
+                "DSpico webhook %s: unexpected error updating store", webhook_id
+            )
+            return Response(status=500)
         return Response(status=200)
 
     return handler

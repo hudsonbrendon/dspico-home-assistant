@@ -7,14 +7,22 @@ def _prewarm_pycares_shutdown_thread():
     """Pre-start the pycares channel-shutdown daemon thread.
 
     pycares._shutdown_manager lazily starts a daemon thread the first time a
-    DNS channel is destroyed.  If that happens inside a test's teardown phase,
-    verify_cleanup sees it as a new thread and fails.  Starting it here, once
-    at session scope, puts it in every test's ``threads_before`` baseline.
+    DNS channel is destroyed. If that happens inside a test's teardown phase,
+    verify_cleanup sees it as a new thread and fails. Starting it here, once at
+    session scope, puts it in every test's ``threads_before`` baseline.
     """
     try:
         import pycares  # noqa: PLC0415
 
         pycares._shutdown_manager.start()  # noqa: SLF001
+    except AttributeError:
+        import warnings
+
+        warnings.warn(
+            "pycares._shutdown_manager not found; the verify_cleanup workaround "
+            "in conftest.py may be obsolete. Check for spurious thread failures.",
+            stacklevel=1,
+        )
     except Exception:  # noqa: BLE001
         pass
 

@@ -43,6 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bo
 
 async def async_unload_entry(hass: HomeAssistant, entry: DspicoConfigEntry) -> bool:
     """Unload a config entry."""
-    ha_webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
-    entry.runtime_data.shutdown()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        ha_webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID])
+        entry.runtime_data.shutdown()
+    return unload_ok
