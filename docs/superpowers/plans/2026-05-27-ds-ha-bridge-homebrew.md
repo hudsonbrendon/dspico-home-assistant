@@ -1613,3 +1613,52 @@ signatures are consistent across their headers and call sites in `main.c`. The
 emitted JSON keys (`device`, `fw`, `battery.level/charging`, `rtc`,
 `identity.nickname/color/language`, `wifi.rssi/ssid`, `uptime_s`) match the HA
 `TELEMETRY_SCHEMA` exactly.
+
+---
+
+## Build Log — deviations from the original plan
+
+Captured during subagent-driven execution. Code is the source of truth.
+
+**Build/verification status**
+- **Pure-C modules (Tasks 1-6)** — `config`, `json`, `battmap`, `identity`,
+  `httpreq` — fully host-tested with `gcc`/clang: `tests/host && make test` is
+  green (all six modules `ok`).
+- **libnds glue (Tasks 7-11)** — `telemetry`, `wifi`, `httppost`, `main`,
+  Makefile — written per plan and reviewed for correctness, but the ROM
+  **build is PENDING a BlocksDS toolchain** (not installed on the build
+  machine: no `BLOCKSDS`, no `arm-none-eabi-gcc`). `make` (the .nds build) and
+  the melonDS/hardware integration test must be run on a BlocksDS environment.
+
+**Deviations / refinements applied during build**
+1. **`tests/host/Makefile`** — the plan's `$($${t}_SRC)` recipe expanded as a
+   shell command-substitution (broke for any non-empty source list). Reworked
+   to `$(foreach)` + `$(eval $(call ...))` so per-test sources resolve at Make
+   level.
+2. **`config.c`** — added leading-whitespace trimming per line (indented keys /
+   comments in hand-edited SD files) and regression tests for CRLF, no trailing
+   newline, malformed numbers → defaults, and lines without `=`.
+3. **`json.c`** — full JSON control-character escaping (`\n \r \t \b \f` and
+   `\uXXXX` for other U+0000..U+001F), beyond just `"`/`\`; documented the
+   `TLM_UNKNOWN_RSSI` (strictly positive) sentinel invariant; added
+   partial-battery, `rssi==0`, and control-char tests.
+4. **`identity.c`** — guard `outsize == 0` in `nickname_to_ascii` (avoids a
+   one-byte write to a zero-size buffer).
+5. **`httpreq.c`** — guard NULL `body`; added an empty-body test.
+6. **`httppost.c`** — read the HTTP status line with a recv loop (until the
+   first newline / buffer full / peer close) instead of a single `recv`, so a
+   short read can't yield a wrong status code.
+7. **`telemetry.c`** — clamp the favourite-colour (`PersonalData->theme`) to
+   0-15, dropping an out-of-range value to unknown so a corrupted settings
+   region can't make HA reject the POST with a 400.
+
+**Known build-time API notes (documented inline in the code)**
+- `wifi.c`: the dswifi getter for the *connected* AP's RSSI/SSID varies by
+  version; the safe fallback (unknown rssi / empty ssid) is in place.
+- `httppost.c`: `closesocket()` is the dswifi close; swap for `close()` if the
+  BlocksDS build uses that.
+- `battmap.c`: the DSi battery nibble→percent steps are an assumption to confirm
+  on real hardware (the table is the single place to adjust).
+
+**Result:** 11 tasks; pure-C host suite green; holistic review concluded
+"ready to build/ship pending the BlocksDS compile". No Critical issues.
