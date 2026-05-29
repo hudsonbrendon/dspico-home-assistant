@@ -12,12 +12,17 @@ battmap_SRC  := $(SRCDIR)/battmap.c
 identity_SRC := $(SRCDIR)/identity.c
 httpreq_SRC  := $(SRCDIR)/httpreq.c
 
-.PHONY: test clean
-test:
-	@set -e; for t in $(TESTS); do \
-		echo "== $$t =="; \
-		$(CC) $(CFLAGS) -o /tmp/dshb_$$t test_$$t.c $($${t}_SRC) && /tmp/dshb_$$t; \
-	done
+.PHONY: test clean $(TESTS)
+
+test: $(TESTS)
+
+define TEST_RULE
+$(1):
+	@echo "== $(1) =="
+	@$(CC) $(CFLAGS) -o /tmp/dshb_$(1) test_$(1).c $($(1)_SRC) && /tmp/dshb_$(1)
+endef
+
+$(foreach t,$(TESTS),$(eval $(call TEST_RULE,$(t))))
 
 clean:
 	rm -f /tmp/dshb_*
