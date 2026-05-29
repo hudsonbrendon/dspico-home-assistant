@@ -1,0 +1,12 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "presence": {
+        "name": "Presence"
+      },
+      "charging": {
+        "name": "Charging"
+      }
+    }
+  }
+}

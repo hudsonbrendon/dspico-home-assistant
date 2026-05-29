@@ -28,10 +28,13 @@ class DspicoData:
         self._last_seen: datetime | None = None
         self._cancel_watchdog: Callable[[], None] | None = None
         self._offline_cb: Callable[[], None] | None = None
+        self._available: bool = False
 
     @property
     def available(self) -> bool:
         if self._last_seen is None:
+            return False
+        if not self._available:
             return False
         return dt_util.utcnow() - self._last_seen < self._timeout
 
@@ -43,6 +46,7 @@ class DspicoData:
         """Record a fresh payload and (re)arm the offline watchdog."""
         self.fields = fields
         self._last_seen = dt_util.utcnow()
+        self._available = True
         if self._cancel_watchdog is not None:
             self._cancel_watchdog()
         self._cancel_watchdog = async_call_later(
@@ -53,6 +57,7 @@ class DspicoData:
     def _handle_timeout(self, _now: datetime) -> None:
         # If the handle fired naturally, the cancellation function is a no-op;
         # keep it so that a manual call in tests doesn't strand the live timer.
+        self._available = False
         if self._offline_cb is not None:
             self._offline_cb()
 
