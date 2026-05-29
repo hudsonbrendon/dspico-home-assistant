@@ -22,7 +22,7 @@
       "wifi_signal": { "name": "Wi-Fi signal" },
       "rtc": { "name": "Console clock" },
       "nickname": { "name": "Nickname" },
-      "color": { "name": "Favourite colour" },
+      "color": { "name": "Favorite color" },
       "language": { "name": "Language" },
       "last_seen": { "name": "Last seen" }
     }
