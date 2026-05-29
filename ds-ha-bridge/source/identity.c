@@ -2,6 +2,9 @@
 
 void nickname_to_ascii(const unsigned short *utf16, int len,
                        char *out, size_t outsize) {
+    if (outsize == 0) {
+        return;
+    }
     size_t o = 0;
     for (int i = 0; i < len && o + 1 < outsize; i++) {
         unsigned short c = utf16[i];

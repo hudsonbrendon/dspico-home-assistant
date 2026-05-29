@@ -24,6 +24,7 @@ int main(void) {
     CHECK_STR(language_code(4), "it");
     CHECK_STR(language_code(5), "es");
     CHECK_STR(language_code(6), "zh");
+    CHECK_STR(language_code(7), "ko");
     CHECK_STR(language_code(99), "");
     DONE();
 }
