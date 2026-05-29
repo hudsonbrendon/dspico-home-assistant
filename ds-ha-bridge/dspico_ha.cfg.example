@@ -1,0 +1,7 @@
+# Copy to the SD card root as /dspico_ha.cfg and edit.
+# Use the webhook URL shown by the Home Assistant "DSpico" integration.
+host=192.168.31.150
+port=8123
+path=/api/webhook/REPLACE_WITH_WEBHOOK_ID
+interval_sec=30
+device_name=dsi-quarto
