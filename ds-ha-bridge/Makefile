@@ -12,9 +12,10 @@ INCLUDEDIRS := include
 # DSi mode is required for WPA2 Wi-Fi.
 DSISUPPORT := 1
 
-LIBS    := -ldswifi9 -lfat -lnds9
+# BlocksDS bundles FatFs inside libnds (fat.h / fatInitDefault come from
+# libnds), so there is no separate -lfat.
+LIBS    := -ldswifi9 -lnds9
 LIBDIRS := $(BLOCKSDS)/libs/dswifi \
-           $(BLOCKSDS)/libs/libfat \
            $(BLOCKSDS)/libs/libnds
 
 include $(BLOCKSDS)/sys/default_makefiles/rom_arm9/Makefile

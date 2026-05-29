@@ -35,3 +35,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: make test
         working-directory: ds-ha-bridge/tests/host
+
+  ds-rom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the .nds ROM with the BlocksDS toolchain
+        run: >-
+          docker run --rm -v "$PWD/ds-ha-bridge":/project -w /project
+          skylyrac/blocksds:dev-latest make

@@ -13,8 +13,19 @@ integration). Runs on a DSi via the DSpico flashcart.
 
 ## Build
 
-1. Install BlocksDS and `export BLOCKSDS=/opt/blocksds/core`.
-2. `make` -> produces `ds-ha-bridge.nds`.
+**Docker (no local toolchain install needed) — recommended.** From the repo root:
+
+```bash
+docker run --rm -v "$PWD/ds-ha-bridge":/project -w /project \
+  skylyrac/blocksds:dev-latest make
+```
+
+**Native BlocksDS.** Install BlocksDS and make sure `BLOCKSDS` is exported (the
+Wonderful install sets it to `/opt/wonderful/thirdparty/blocksds/core`; the
+standalone install uses `/opt/blocksds/core`), then run `make` in `ds-ha-bridge/`.
+
+Either way produces `ds-ha-bridge.nds` (~224 KB). The ROM build also runs in CI
+(the `ds-rom` job).
 
 ## Install
 
