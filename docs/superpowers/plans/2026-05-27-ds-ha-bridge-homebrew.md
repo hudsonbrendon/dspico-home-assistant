@@ -1625,10 +1625,19 @@ Captured during subagent-driven execution. Code is the source of truth.
   `httpreq` — fully host-tested with `gcc`/clang: `tests/host && make test` is
   green (all six modules `ok`).
 - **libnds glue (Tasks 7-11)** — `telemetry`, `wifi`, `httppost`, `main`,
-  Makefile — written per plan and reviewed for correctness, but the ROM
-  **build is PENDING a BlocksDS toolchain** (not installed on the build
-  machine: no `BLOCKSDS`, no `arm-none-eabi-gcc`). `make` (the .nds build) and
-  the melonDS/hardware integration test must be run on a BlocksDS environment.
+  Makefile — written per plan, reviewed, and now **compiled**: the ROM builds
+  to `ds-ha-bridge.nds` (~224 KB) via the BlocksDS Docker image
+  (`skylyrac/blocksds:dev-latest`), also wired into CI as the `ds-rom` job. The
+  remaining unverified step is the **runtime** test on melonDS / real hardware
+  against a live HA (needs the device + the user's HA).
+
+  Build fixes applied to make it compile (post-implementation):
+  - `main.c`: `iprintf` → `printf` (BlocksDS uses picolibc, which has no
+    `iprintf`).
+  - `telemetry.c`: cast `PersonalData->name` (`s16*`) to `const unsigned short*`
+    for `nickname_to_ascii` (signedness).
+  - `Makefile`: dropped `-lfat` / the libfat libdir — BlocksDS bundles FatFs
+    inside libnds (`fat.h` and `fatInitDefault` come from libnds).
 
 **Deviations / refinements applied during build**
 1. **`tests/host/Makefile`** — the plan's `$($${t}_SRC)` recipe expanded as a
@@ -1652,13 +1661,16 @@ Captured during subagent-driven execution. Code is the source of truth.
    0-15, dropping an out-of-range value to unknown so a corrupted settings
    region can't make HA reject the POST with a 400.
 
-**Known build-time API notes (documented inline in the code)**
-- `wifi.c`: the dswifi getter for the *connected* AP's RSSI/SSID varies by
-  version; the safe fallback (unknown rssi / empty ssid) is in place.
-- `httppost.c`: `closesocket()` is the dswifi close; swap for `close()` if the
-  BlocksDS build uses that.
-- `battmap.c`: the DSi battery nibble→percent steps are an assumption to confirm
-  on real hardware (the table is the single place to adjust).
+**API notes — status after the real BlocksDS (dev-latest) compile**
+- `wifi.c`: `Wifi_GetData(WIFIGETDATA_RSSI, ...)`, `Wifi_AccessPoint.rssi/ssid/
+  ssid_len`, and `Wifi_InitDefault(WFC_CONNECT | WIFI_ATTEMPT_DSI_MODE)` all
+  **compile** against BlocksDS dswifi. Only the *runtime* RSSI accuracy remains
+  to confirm on hardware; the safe unknown-fallback is in place.
+- `httppost.c`: `closesocket()` **compiles** (dswifi provides it). One
+  non-fatal deprecation warning remains: `gethostbyname` — fine here since the
+  config `host` is a dotted-IP literal.
+- `battmap.c`: the DSi battery nibble→percent steps are still a calibration
+  assumption to confirm on a real DSi (the table is the single place to adjust).
 
 **Result:** 11 tasks; pure-C host suite green; holistic review concluded
 "ready to build/ship pending the BlocksDS compile". No Critical issues.

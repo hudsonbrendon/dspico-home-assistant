@@ -31,8 +31,8 @@ void telemetry_collect(telemetry_t *t, const char *device_name,
     /* Firmware user settings: PersonalData is a libnds macro to the user
      * settings region. name is UTF-16 (nameLen units), theme = favourite
      * colour, language = language byte. */
-    nickname_to_ascii(PersonalData->name, PersonalData->nameLen,
-                      t->nickname, sizeof(t->nickname));
+    nickname_to_ascii((const unsigned short *)PersonalData->name,
+                      PersonalData->nameLen, t->nickname, sizeof(t->nickname));
     t->color = PersonalData->theme;
     if (t->color < 0 || t->color > 15) {
         t->color = TLM_UNKNOWN_INT; /* drop an out-of-range colour, don't 400 */
