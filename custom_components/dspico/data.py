@@ -39,6 +39,10 @@ class DspicoData:
     def available(self) -> bool:
         return self._available
 
+    @property
+    def last_seen(self) -> datetime | None:
+        return self._last_seen
+
     def set_offline_callback(self, cb: Callable[[], None]) -> None:
         self._offline_cb = cb
 
