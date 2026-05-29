@@ -62,6 +62,8 @@ def parse_payload(raw: dict[str, Any]) -> dict[str, Any]:
     battery = data.get("battery", {})
     identity = data.get("identity", {})
     wifi = data.get("wifi", {})
+    # Note: fw, ssid and uptime_s are validated and returned for
+    # forward-compatibility but are not (yet) surfaced as entities.
     return {
         "device": data["device"],
         "fw": data.get("fw"),
